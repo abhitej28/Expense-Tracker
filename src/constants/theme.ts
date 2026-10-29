@@ -9,23 +9,41 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#0B1F18',
+    background: '#F3F8F5',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#E0EDE6',
+    textSecondary: '#5A6F66',
+    card: '#FFFFFF',
+    border: '#D5E4DB',
+    track: '#DCE8E1',
+    accent: '#A3E635',
+    accentText: '#0B1F18',
+    positive: '#059669',
+    warning: '#D97706',
+    danger: '#E11D48',
+    purple: '#7C3AED',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#F2FBF7',
+    background: '#06120E',
+    backgroundElement: '#0E1F19',
+    backgroundSelected: '#16322A',
+    textSecondary: '#8FAA9F',
+    card: '#0E1F19',
+    border: '#1C3A30',
+    track: '#1F3A31',
+    accent: '#B6F34A',
+    accentText: '#06120E',
+    positive: '#34D399',
+    warning: '#FDBA74',
+    danger: '#FB7185',
+    purple: '#A78BFA',
   },
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
-
+export type AppColors = Record<keyof typeof Colors.light, string>;
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */
