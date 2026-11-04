@@ -1,4 +1,7 @@
-import { createContext, ReactNode, useContext, useState } from 'react';
+import type { ReactNode } from 'react';
+import { createContext, useContext, useState } from 'react';
+
+export type PaymentMethod = 'UPI' | 'Cash' | 'Card' | 'Bank transfer';
 
 export type Transaction = {
   id: string;
@@ -6,14 +9,17 @@ export type Transaction = {
   category: string;
   amount: number;
   note: string;
-  date: string; // saved as ISO text, e.g. "2026-10-30T01:10:00.000Z"
+  paymentMethod: PaymentMethod;
+  date: string;
 };
 
-type NewTransaction = Omit<Transaction, 'id' | 'date'>;
+export type TransactionInput = Omit<Transaction, 'id' | 'date'> & { date?: string };
 
 type TransactionsContextType = {
   transactions: Transaction[];
-  addTransaction: (t: NewTransaction) => void;
+  addTransaction: (transaction: TransactionInput) => void;
+  updateTransaction: (id: string, transaction: TransactionInput) => void;
+  deleteTransaction: (id: string) => void;
 };
 
 const TransactionsContext = createContext<TransactionsContextType | null>(null);
@@ -21,18 +27,33 @@ const TransactionsContext = createContext<TransactionsContextType | null>(null);
 export function TransactionsProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  const addTransaction = (t: NewTransaction) => {
+  const addTransaction = (transaction: TransactionInput) => {
     const newTransaction: Transaction = {
-      ...t,
-      id: Date.now().toString(),
-      date: new Date().toISOString(),
+      ...transaction,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date: transaction.date ?? new Date().toISOString(),
     };
-    // newest first
     setTransactions((previous) => [newTransaction, ...previous]);
   };
 
+  const updateTransaction = (id: string, transaction: TransactionInput) => {
+    setTransactions((previous) =>
+      previous.map((item) =>
+        item.id === id
+          ? { ...item, ...transaction, date: transaction.date ?? item.date }
+          : item,
+      ),
+    );
+  };
+
+  const deleteTransaction = (id: string) => {
+    setTransactions((previous) => previous.filter((item) => item.id !== id));
+  };
+
   return (
-    <TransactionsContext.Provider value={{ transactions, addTransaction }}>
+    <TransactionsContext.Provider
+      value={{ transactions, addTransaction, updateTransaction, deleteTransaction }}
+    >
       {children}
     </TransactionsContext.Provider>
   );

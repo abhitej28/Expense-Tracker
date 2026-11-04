@@ -8,8 +8,10 @@ export function useColorScheme() {
   const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
-    setHasHydrated(true);
-  }, []);
+  // Intentional: update the theme after web hydration.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  setHasHydrated(true);
+}, []);
 
   const colorScheme = useRNColorScheme();
 
