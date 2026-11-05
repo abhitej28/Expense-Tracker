@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
 
+import { useBudgets } from '@/context/budgets';
 import type { Transaction } from '@/context/transactions';
 import { useTransactions } from '@/context/transactions';
 
@@ -42,8 +44,6 @@ const CATEGORY_STYLES: Record<string, { icon: IconName; color: string }> = {
   Other: { icon: 'ellipsis-horizontal-circle-outline', color: COLORS.muted },
 };
 
-const monthlyBudget = 15000;
-
 function getCategoryStyle(category: string) {
   return CATEGORY_STYLES[category] ?? CATEGORY_STYLES.Other;
 }
@@ -75,6 +75,76 @@ function formatTransactionDate(isoDate: string) {
   return `${date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · ${time}`;
 }
 
+type CategoryTotal = { amount: number; count: number };
+
+function DonutChart({
+  categories,
+  total,
+}: {
+  categories: [string, CategoryTotal][];
+  total: number;
+}) {
+  const size = 190;
+  const center = size / 2;
+  const radius = 69;
+  const strokeWidth = 19;
+  const circumference = 2 * Math.PI * radius;
+
+  return (
+    <View
+      style={styles.donutWrap}
+      accessibilityRole="image"
+      accessibilityLabel={`Spending by category. Total ₹${total.toLocaleString('en-IN')}.`}
+    >
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke="#2A2C36"
+          strokeWidth={strokeWidth}
+        />
+        {categories.map(([name, values], index) => {
+          const share = total > 0 ? values.amount / total : 0;
+          const segmentLength = Math.max(0, circumference * share - 2.5);
+          const amountBefore = categories
+            .slice(0, index)
+            .reduce((sum, [, previous]) => sum + previous.amount, 0);
+          const segmentOffset = total > 0 ? (circumference * amountBefore) / total : 0;
+
+          if (segmentLength <= 0) return null;
+
+          return (
+            <Circle
+              key={name}
+              cx={center}
+              cy={center}
+              r={radius}
+              fill="none"
+              stroke={getCategoryStyle(name).color}
+              strokeWidth={strokeWidth}
+              strokeDasharray={`${segmentLength} ${circumference}`}
+              strokeDashoffset={-segmentOffset}
+              strokeLinecap="butt"
+              transform={`rotate(-90 ${center} ${center})`}
+            />
+          );
+        })}
+      </Svg>
+      <View style={styles.donutCenter} pointerEvents="none">
+        <Text style={styles.donutEyebrow}>THIS MONTH</Text>
+        <Text style={styles.donutTotal} numberOfLines={1} adjustsFontSizeToFit>
+          ₹{total.toLocaleString('en-IN')}
+        </Text>
+        <Text style={styles.donutCaption}>
+          {categories.length} {categories.length === 1 ? 'category' : 'categories'}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function SectionHeading({
   title,
   action,
@@ -100,6 +170,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { transactions } = useTransactions();
+  const { budgets } = useBudgets();
+  const monthlyBudget = budgets.monthlyLimit;
   const now = new Date();
   const currentMonthTransactions = transactions.filter((transaction) => isInCurrentMonth(transaction.date, now));
   const totalSpent = currentMonthTransactions.reduce((total, transaction) => total + transaction.amount, 0);
@@ -222,7 +294,9 @@ export default function HomeScreen() {
           {categories.length === 0 ? (
             <Text style={styles.emptyText}>Add an expense to see your category breakdown.</Text>
           ) : (
-            categories.map(([name, values]) => {
+            <>
+              <DonutChart categories={categories} total={totalSpent} />
+              {categories.map(([name, values]) => {
               const categoryStyle = getCategoryStyle(name);
               const share = totalSpent ? (values.amount / totalSpent) * 100 : 0;
               return (
@@ -246,7 +320,8 @@ export default function HomeScreen() {
                   </View>
                 </View>
               );
-            })
+              })}
+            </>
           )}
         </View>
 
@@ -282,7 +357,7 @@ export default function HomeScreen() {
           )}
         </View>
 
-        <Text style={styles.disclaimer}>NOT CONNECTED TO YOUR BANK · SESSION DATA ONLY</Text>
+        <Text style={styles.disclaimer}>NOT CONNECTED TO YOUR BANK · SAVED ON THIS DEVICE</Text>
       </ScrollView>
 
       <View style={[styles.addDock, { paddingBottom: Math.max(insets.bottom, 12) }]} pointerEvents="box-none">
@@ -316,6 +391,8 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 18 },
   budgetRow: { flexDirection: 'row', justifyContent: 'space-between' },
   secondaryLabel: { color: COLORS.muted, fontSize: 11 },
+  budgetLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  budgetEdit: { color: '#C7B6FF', fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
   budgetValue: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginTop: 5 },
   remainingContainer: { alignItems: 'flex-end' },
   remainingValue: { color: COLORS.teal, fontSize: 15, fontWeight: '700', marginTop: 5 },
@@ -343,6 +420,11 @@ const styles = StyleSheet.create({
   summaryAmount: { color: COLORS.text, fontSize: 19, fontWeight: '800', marginTop: 4 },
   legend: { flexDirection: 'row', gap: 5 },
   legendDot: { width: 7, height: 7, borderRadius: 4 },
+  donutWrap: { alignSelf: 'center' , width: 190, height: 190, alignItems: 'center', justifyContent: 'center', marginTop: 15, marginBottom: 12 },
+  donutCenter: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  donutEyebrow: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 1.1 },
+  donutTotal: { color: COLORS.text, fontSize: 19, fontWeight: '800', maxWidth: 112, marginTop: 5 },
+  donutCaption: { color: COLORS.muted, fontSize: 9, marginTop: 3 },
   categoryItem: { paddingTop: 12 },
   categoryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   categoryLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
@@ -363,6 +445,7 @@ const styles = StyleSheet.create({
   transactionAmount: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
   disclaimer: { color: '#696D79', fontSize: 8, fontWeight: '700', letterSpacing: 1, textAlign: 'center', marginTop: 1, marginBottom: 12 },
   addDock: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', paddingTop: 20, backgroundColor: 'rgba(8,9,13,0.96)' },
-  addButton: { minWidth: 178, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.violet, paddingHorizontal: 22, paddingVertical: 13, borderRadius: 18, shadowColor: COLORS.violet, shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 6 },
+  addButton: { minWidth: 178, flexDirection: 'row', alignItems: 'center', 
+  justifyContent: 'center', gap: 8, backgroundColor: COLORS.violet, paddingHorizontal: 22, paddingVertical: 13, borderRadius: 18, shadowColor: COLORS.violet, shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 6 },
   addButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 });
