@@ -2,11 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -38,6 +39,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   Other: COLORS.muted,
 };
 
+const PAYMENT_METHODS = ['UPI', 'Cash', 'Card', 'Bank transfer'] as const;
+const DATE_FILTERS = [
+  { key: 'all', label: 'All time' },
+  { key: 'month', label: 'This month' },
+  { key: '30days', label: 'Last 30 days' },
+] as const;
+
 function formatDate(isoDate: string) {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) return 'Date unavailable';
@@ -52,10 +60,50 @@ export default function TransactionsScreen() {
   const router = useRouter();
   const { transactions, deleteTransaction } = useTransactions();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<(typeof DATE_FILTERS)[number]['key']>('all');
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastThirtyDays = new Date(now);
+  lastThirtyDays.setDate(now.getDate() - 30);
   const sortedTransactions = [...transactions].sort(
     (first, second) => new Date(second.date).getTime() - new Date(first.date).getTime(),
   );
-  const total = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+  const categories = Array.from(new Set(transactions.map((transaction) => transaction.category))).sort();
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+  const filteredTransactions = sortedTransactions.filter((transaction) => {
+    const matchesSearch = !normalizedQuery || [
+      transaction.merchant,
+      transaction.category,
+      transaction.paymentMethod,
+      transaction.note,
+    ].some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+    const matchesCategory = !selectedCategory || transaction.category === selectedCategory;
+    const matchesPayment = !selectedPayment || transaction.paymentMethod === selectedPayment;
+    const transactionDate = new Date(transaction.date);
+    const matchesDate = dateFilter === 'all' || (
+      !Number.isNaN(transactionDate.getTime()) &&
+      (dateFilter === 'month' ? transactionDate >= monthStart : transactionDate >= lastThirtyDays) &&
+      transactionDate <= now
+    );
+    return matchesSearch && matchesCategory && matchesPayment && matchesDate;
+  });
+  const total = filteredTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+  const hasActiveFilters = Boolean(
+    normalizedQuery || selectedCategory || selectedPayment || dateFilter !== 'all',
+  );
+  const activeFilterCount = Number(Boolean(selectedCategory)) +
+    Number(Boolean(selectedPayment)) + Number(dateFilter !== 'all');
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory(null);
+    setSelectedPayment(null);
+    setDateFilter('all');
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -83,11 +131,110 @@ export default function TransactionsScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.searchRow}>
+          <Ionicons name="search-outline" size={18} color={COLORS.muted} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search merchant, note, category..."
+            placeholderTextColor={COLORS.muted}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            returnKeyType="search"
+            accessibilityLabel="Search transactions"
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
+              <Ionicons name="close-circle" size={18} color={COLORS.muted} />
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            onPress={() => setShowFilters((visible) => !visible)}
+            style={[styles.filterButton, showFilters && styles.filterButtonActive]}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle transaction filters"
+          >
+            <Ionicons name="options-outline" size={17} color={showFilters ? COLORS.violet : COLORS.text} />
+            {activeFilterCount > 0 ? <Text style={styles.filterCount}>{activeFilterCount}</Text> : null}
+          </TouchableOpacity>
+        </View>
+
+        {showFilters ? (
+          <View style={styles.filtersCard}>
+            <View style={styles.filterHeadingRow}>
+              <Text style={styles.filterHeading}>DATE</Text>
+              {hasActiveFilters ? (
+                <TouchableOpacity onPress={clearFilters} accessibilityRole="button">
+                  <Text style={styles.clearText}>Clear filters</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <View style={styles.filterChips}>
+              {DATE_FILTERS.map((option) => {
+                const selected = dateFilter === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    onPress={() => setDateFilter(option.key)}
+                    style={[styles.filterChip, selected && styles.filterChipSelected]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>{option.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.filterHeading}>CATEGORY</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
+              {[null, ...categories].map((category) => {
+                const selected = selectedCategory === category;
+                return (
+                  <TouchableOpacity
+                    key={category ?? 'all-categories'}
+                    onPress={() => setSelectedCategory(category)}
+                    style={[styles.filterChip, selected && styles.filterChipSelected]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>
+                      {category ?? 'All'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <Text style={styles.filterHeading}>PAYMENT METHOD</Text>
+            <View style={styles.filterChips}>
+              {[null, ...PAYMENT_METHODS].map((method) => {
+                const selected = selectedPayment === method;
+                return (
+                  <TouchableOpacity
+                    key={method ?? 'all-methods'}
+                    onPress={() => setSelectedPayment(method)}
+                    style={[styles.filterChip, selected && styles.filterChipSelected]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>
+                      {method ?? 'All'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>ALL RECORDED EXPENSES</Text>
+          <Text style={styles.summaryLabel}>
+            {hasActiveFilters ? 'MATCHING EXPENSES' : 'ALL RECORDED EXPENSES'}
+          </Text>
           <Text style={styles.totalAmount}>₹{total.toLocaleString('en-IN')}</Text>
           <Text style={styles.transactionCount}>
-            {transactions.length} {transactions.length === 1 ? 'transaction' : 'transactions'}
+            {filteredTransactions.length} {filteredTransactions.length === 1 ? 'transaction' : 'transactions'}
           </Text>
         </View>
 
@@ -106,9 +253,20 @@ export default function TransactionsScreen() {
               <Text style={styles.emptyActionText}>Add an expense</Text>
             </TouchableOpacity>
           </View>
+        ) : filteredTransactions.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="search-outline" size={23} color={COLORS.violet} />
+            </View>
+            <Text style={styles.emptyTitle}>No matching expenses</Text>
+            <Text style={styles.emptyDescription}>Try another search or clear your filters to see all transactions.</Text>
+            <TouchableOpacity style={styles.emptyAction} onPress={clearFilters} accessibilityRole="button">
+              <Text style={styles.emptyActionText}>Clear search and filters</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={styles.list}>
-            {sortedTransactions.map((transaction) => {
+            {filteredTransactions.map((transaction) => {
               const color = CATEGORY_COLORS[transaction.category] ?? COLORS.violet;
               const confirmingDelete = pendingDeleteId === transaction.id;
               return (
@@ -173,7 +331,7 @@ export default function TransactionsScreen() {
           </View>
         )}
 
-        <Text style={styles.disclaimer}>NOT CONNECTED TO YOUR BANK · SESSION DATA ONLY</Text>
+        <Text style={styles.disclaimer}>NOT CONNECTED TO YOUR BANK · SAVED ON THIS DEVICE</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -189,6 +347,20 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 24, fontWeight: '800' },
   addButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.violet },
   summaryCard: { backgroundColor: COLORS.raised, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: 19, marginBottom: 22 },
+  searchRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, marginBottom: 12 },
+  searchInput: { flex: 1, color: COLORS.text, fontSize: 11, paddingVertical: 10 },
+  filterButton: { minWidth: 31, height: 31, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 10, backgroundColor: COLORS.raised, paddingHorizontal: 6 },
+  filterButtonActive: { borderWidth: 1, borderColor: COLORS.violet },
+  filterCount: { color: COLORS.violet, fontSize: 9, fontWeight: '800' },
+  filtersCard: { padding: 13, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 16, marginBottom: 14, gap: 8 },
+  filterHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  filterHeading: { color: COLORS.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.9, marginTop: 4 },
+  clearText: { color: '#C7B6FF', fontSize: 9, fontWeight: '700' },
+  filterChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  filterChip: { paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, backgroundColor: COLORS.raised, borderWidth: 1, borderColor: COLORS.border },
+  filterChipSelected: { backgroundColor: '#30293F', borderColor: COLORS.violet },
+  filterChipText: { color: '#C4C6D0', fontSize: 8, fontWeight: '600' },
+  filterChipTextSelected: { color: '#D7CAFF' },
   summaryLabel: { color: COLORS.muted, fontSize: 9, fontWeight: '800', letterSpacing: 1.1 },
   totalAmount: { color: COLORS.text, fontSize: 30, fontWeight: '800', marginTop: 8 },
   transactionCount: { color: COLORS.muted, fontSize: 11, marginTop: 4 },

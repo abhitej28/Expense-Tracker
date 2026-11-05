@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import type { PaymentMethod } from '@/context/transactions';
+import type { PaymentMethod, Transaction } from '@/context/transactions';
 import { useTransactions } from '@/context/transactions';
 
 const COLORS = {
@@ -64,6 +64,22 @@ function parseDateInput(value: string) {
   return parsed;
 }
 
+function getSuggestedCategory(
+  merchant: string,
+  transactions: Transaction[],
+  excludeTransactionId?: string,
+) {
+  const normalizedMerchant = merchant.trim().toLocaleLowerCase();
+  if (!normalizedMerchant) return null;
+
+  const previousMatch = transactions.find((transaction) =>
+    transaction.id !== excludeTransactionId &&
+    transaction.merchant.trim().toLocaleLowerCase() === normalizedMerchant,
+  );
+
+  return previousMatch?.category ?? null;
+}
+
 export default function AddExpenseScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -77,6 +93,18 @@ export default function AddExpenseScreen() {
   const [date, setDate] = useState(() => getLocalDateInputValue(editingTransaction?.date));
   const [note, setNote] = useState(() => editingTransaction?.note ?? '');
   const [error, setError] = useState('');
+  const [categoryManuallySelected, setCategoryManuallySelected] = useState(
+    () => Boolean(editingTransaction?.category),
+  );
+
+  const suggestedCategory = getSuggestedCategory(merchant, transactions, transactionId);
+
+  const handleMerchantChange = (value: string) => {
+    setMerchant(value);
+    if (!categoryManuallySelected) {
+      setCategory(getSuggestedCategory(value, transactions, transactionId));
+    }
+  };
 
   const handleAmountChange = (text: string) => {
     if (/^\d*\.?\d{0,2}$/.test(text)) setAmount(text);
@@ -154,12 +182,33 @@ export default function AddExpenseScreen() {
           <TextInput
             style={styles.input}
             value={merchant}
-            onChangeText={setMerchant}
+            onChangeText={handleMerchantChange}
             placeholder="e.g. Sharma Stores"
             placeholderTextColor={COLORS.muted}
             returnKeyType="next"
             accessibilityLabel="Merchant or description"
           />
+          {suggestedCategory ? (
+            <View style={styles.suggestion}>
+              <Ionicons name="sparkles-outline" size={15} color={COLORS.violet} />
+              <Text style={styles.suggestionText}>
+                {category === suggestedCategory
+                  ? `Matched to ${suggestedCategory} from your previous expenses.`
+                  : `You previously used ${suggestedCategory} for this merchant.`}
+              </Text>
+              {category !== suggestedCategory ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setCategory(suggestedCategory);
+                    setCategoryManuallySelected(true);
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.useSuggestion}>Use</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
 
           <Text style={styles.label}>AMOUNT</Text>
           <View style={styles.amountField}>
@@ -195,7 +244,10 @@ export default function AddExpenseScreen() {
               return (
                 <TouchableOpacity
                   key={item}
-                  onPress={() => setCategory(item)}
+                  onPress={() => {
+                    setCategory(item);
+                    setCategoryManuallySelected(true);
+                  }}
                   style={[styles.chip, selected && styles.chipSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
@@ -262,6 +314,9 @@ const styles = StyleSheet.create({
   closeButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
   label: { color: COLORS.muted, fontSize: 9, fontWeight: '800', letterSpacing: 1.1, marginTop: 19, marginBottom: 8 },
   input: { minHeight: 48, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, color: COLORS.text, fontSize: 14 },
+  suggestion: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 8, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 11, backgroundColor: '#211D2B', borderWidth: 1, borderColor: '#30293F' },
+  suggestionText: { flex: 1, color: '#C4BDCF', fontSize: 9, lineHeight: 14 },
+  useSuggestion: { color: '#D7CAFF', fontSize: 9, fontWeight: '800', paddingHorizontal: 4 },
   amountField: { minHeight: 61, flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.raised, borderWidth: 1, borderColor: '#353140', borderRadius: 16, paddingHorizontal: 15 },
   currency: { color: COLORS.violet, fontSize: 24, fontWeight: '700', marginRight: 9 },
   amountInput: { flex: 1, color: COLORS.text, fontSize: 23, fontWeight: '700', paddingVertical: 10 },
